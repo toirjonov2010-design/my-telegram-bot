@@ -21,8 +21,8 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# BOT SOZLAMALARI
-TOKEN = "8540345211:AAGnW0zqVe4jM5-qedUIwEabitzowisW-y0"
+# BOT SOZLAMALARI (Token serverdagi BOT_TOKEN o'zgaruvchisidan olinadi)
+TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
 user_data = {}
