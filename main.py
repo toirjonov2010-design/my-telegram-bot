@@ -21,7 +21,7 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# BOT SOZLAMALARI (Token serverdagi BOT_TOKEN o'zgaruvchisidan olinadi)
+# BOT SOZLAMALARI
 TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
@@ -75,9 +75,10 @@ def handle_text(message):
     elif text == "📞 Biz bilan bog'lanish":
         contact_text = (
             "📞 **Biz bilan bog'lanish:**\n\n"
-            "👨‍🏫 **Ustoz:** Hayotjon domla\n"
-            "📱 **Telefon:** +998 97 957 54 55\n\n"
-            "❓ Savollaringiz bo'lsa, bemalol qo'ng'iroq qilishingiz yoki aloqaga chiqishingiz mumkin!"
+            "👨‍🏫 **Mas'ul xodimlar:**\n"
+            "• Qodirboyev Xudobergan: +998 90 560 59 59\n"
+            "• Eraliyev Hayot: +998 97 957 54 55\n\n"
+            "❓ Savollaringiz bo'lsa, bemalol qo'ng'iroq qilishingiz mumkin!"
         )
         bot.send_message(chat_id, contact_text, parse_mode="Markdown")
 
