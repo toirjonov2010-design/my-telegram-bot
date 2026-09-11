@@ -1,6 +1,7 @@
 import os
 import time
 import threading
+import sqlite3
 from flask import Flask
 import telebot
 from telebot import types
@@ -21,16 +22,62 @@ def keep_alive():
     t.daemon = True
     t.start()
 
+# MA'LUMOTLAR BAZASI (SQLite)
+def init_db():
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER UNIQUE,
+            full_name TEXT,
+            phone TEXT,
+            username TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def save_user(chat_id, full_name, phone, username):
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT OR REPLACE INTO users (chat_id, full_name, phone, username)
+        VALUES (?, ?, ?, ?)
+    ''', (chat_id, full_name, phone, username))
+    conn.commit()
+    conn.close()
+
+def get_all_registered():
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT full_name, phone, username FROM users WHERE full_name IS NOT NULL')
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+def clear_db():
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM users')
+    conn.commit()
+    conn.close()
+
+def get_all_chat_ids():
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT chat_id FROM users')
+    rows = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
 # BOT SOZLAMALARI
 TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
-# SIZNING TELEGRAM ID'INGIZ (ADMIN)
-ADMIN_ID = 7612340447  # ID integer formatida
-
-# Baza (Xotirada saqlash uchun)
-registered_users = []  # Ro'yxatdan o'tganlar
-all_chat_ids = set()   # Barcha botga kirganlar (reklama yuborish uchun)
+ADMIN_ID = 7612340447
 user_data = {}
 
 # ASOSIY MENYU TUGMALARI
@@ -61,7 +108,7 @@ def admin_menu():
 # 1. /start KOMANDASI
 @bot.message_handler(commands=['start'])
 def start_command(message):
-    all_chat_ids.add(message.chat.id)
+    save_user(message.chat.id, None, None, message.from_user.username)
     first_name = message.from_user.first_name or "O'quvchi"
     text = (
         f"👋 **Salom, {first_name}!**\n\n"
@@ -70,7 +117,7 @@ def start_command(message):
     )
     bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=main_menu())
 
-# 2. /admin KOMANDASI (Faqat siz uchun)
+# 2. /admin KOMANDASI
 @bot.message_handler(commands=['admin'])
 def admin_command(message):
     if message.from_user.id == ADMIN_ID:
@@ -89,22 +136,23 @@ def handle_text(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     text = message.text
-    all_chat_ids.add(chat_id)
 
-    # --- ADMIN TUGMALARI (FAQAT SIZ UCHUN ISHLAYDI) ---
+    # --- ADMIN TUGMALARI ---
     if user_id == ADMIN_ID:
         if text == "📋 Ro'yxatni ko'rish":
-            if not registered_users:
+            users = get_all_registered()
+            if not users:
                 bot.send_message(chat_id, "📭 Hozircha hech kim ro'yxatdan o'tmagan.", reply_markup=admin_menu())
             else:
-                msg_text = f"📋 **Ro'yxatdan o'tganlar ({len(registered_users)} kishi):**\n\n"
-                for i, u in enumerate(registered_users, 1):
-                    msg_text += f"{i}. **{u['name']}** | {u['phone']} | {u['username']}\n"
+                msg_text = f"📋 **Ro'yxatdan o'tganlar ({len(users)} kishi):**\n\n"
+                for i, u in enumerate(users, 1):
+                    username_str = f"@{u[2]}" if u[2] else "Mavjud emas"
+                    msg_text += f"{i}. **{u[0]}** | 📞 {u[1]} | 💬 {username_str}\n"
                 bot.send_message(chat_id, msg_text, parse_mode="Markdown", reply_markup=admin_menu())
             return
 
         elif text == "🧹 Ro'yxatni tozalash":
-            registered_users.clear()
+            clear_db()
             bot.send_message(chat_id, "✅ Ro'yxat muvaffaqiyatli tozalandi!", reply_markup=admin_menu())
             return
 
@@ -203,16 +251,12 @@ def get_phone_number(message):
         phone = message.text
 
     full_name = user_data.get(chat_id, {}).get('name', 'Noma\'lum')
-    username = f"@{message.from_user.username}" if message.from_user.username else "Mavjud emas"
+    username = message.from_user.username or ""
 
-    # Bazaga qo'shish
-    registered_users.append({
-        'name': full_name,
-        'phone': phone,
-        'username': username
-    })
+    # BAZAGA SAQLASH
+    save_user(chat_id, full_name, phone, username)
 
-    # Foydalanuvchiga xabar
+    # FOYDALANUVCHIGA XABAR
     success_text = (
         "🎉 **Muvaffaqiyatli ro'yxatdan o'tdingiz!**\n\n"
         f"👤 **Ism-Familiya:** {full_name}\n"
@@ -221,12 +265,13 @@ def get_phone_number(message):
     )
     bot.send_message(chat_id, success_text, parse_mode="Markdown", reply_markup=main_menu())
 
-    # Adminga (Sizga) darhol xabar yuborish
+    # ADMINGA DARHOL XABAR
+    username_str = f"@{username}" if username else "Mavjud emas"
     admin_notification = (
         "📥 **YANGI O'QUVCHI RO'YXATDAN O'TDI!**\n\n"
         f"👤 **Ism-Familiya:** {full_name}\n"
         f"📞 **Telefon:** {phone}\n"
-        f"💬 **Telegram profil:** {username}"
+        f"💬 **Telegram profil:** {username_str}"
     )
     
     try:
@@ -234,11 +279,12 @@ def get_phone_number(message):
     except Exception as e:
         print(f"Adminga xabar yuborishda xatolik: {e}")
 
-# ALL USERS BROADCAST FUNCTION
+# BROADCAST FUNCTION
 def send_broadcast(message):
     broadcast_text = message.text
+    chat_ids = get_all_chat_ids()
     count = 0
-    for cid in all_chat_ids:
+    for cid in chat_ids:
         try:
             bot.send_message(cid, f"📢 **ADMIN XABARI:**\n\n{broadcast_text}", parse_mode="Markdown")
             count += 1
