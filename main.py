@@ -25,9 +25,12 @@ def keep_alive():
 TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
-# SIZNING TELEGRAM ID'INGIZ (Ro'yxatdan o'tganlar haqidagi xabarlar shu ID'ga boradi)
-ADMIN_ID = "7612340447"
+# SIZNING TELEGRAM ID'INGIZ (ADMIN)
+ADMIN_ID = 7612340447  # ID integer formatida
 
+# Baza (Xotirada saqlash uchun)
+registered_users = []  # Ro'yxatdan o'tganlar
+all_chat_ids = set()   # Barcha botga kirganlar (reklama yuborish uchun)
 user_data = {}
 
 # ASOSIY MENYU TUGMALARI
@@ -44,9 +47,21 @@ def main_menu():
     markup.add(btn5)
     return markup
 
+# ADMIN MENYU TUGMALARI
+def admin_menu():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    btn1 = types.KeyboardButton("📋 Ro'yxatni ko'rish")
+    btn2 = types.KeyboardButton("🧹 Ro'yxatni tozalash")
+    btn3 = types.KeyboardButton("📢 Barchaga xabar yuborish")
+    btn4 = types.KeyboardButton("⬅️ Asosiy menyuga qaytish")
+    markup.add(btn1, btn2)
+    markup.add(btn3, btn4)
+    return markup
+
 # 1. /start KOMANDASI
 @bot.message_handler(commands=['start'])
 def start_command(message):
+    all_chat_ids.add(message.chat.id)
     first_name = message.from_user.first_name or "O'quvchi"
     text = (
         f"👋 **Salom, {first_name}!**\n\n"
@@ -55,12 +70,54 @@ def start_command(message):
     )
     bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=main_menu())
 
-# 2. XABARLARNI QABUL QILISH
+# 2. /admin KOMANDASI (Faqat siz uchun)
+@bot.message_handler(commands=['admin'])
+def admin_command(message):
+    if message.from_user.id == ADMIN_ID:
+        bot.send_message(
+            message.chat.id, 
+            "⚙️ **Admin paneliga xush kelibsiz!**\nQuyidagi amallardan birini tanlang:", 
+            parse_mode="Markdown", 
+            reply_markup=admin_menu()
+        )
+    else:
+        bot.send_message(message.chat.id, "❌ Siz administrator emassiz!")
+
+# 3. XABARLARNI QABUL QILISH
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
     chat_id = message.chat.id
+    user_id = message.from_user.id
     text = message.text
+    all_chat_ids.add(chat_id)
 
+    # --- ADMIN TUGMALARI (FAQAT SIZ UCHUN ISHLAYDI) ---
+    if user_id == ADMIN_ID:
+        if text == "📋 Ro'yxatni ko'rish":
+            if not registered_users:
+                bot.send_message(chat_id, "📭 Hozircha hech kim ro'yxatdan o'tmagan.", reply_markup=admin_menu())
+            else:
+                msg_text = f"📋 **Ro'yxatdan o'tganlar ({len(registered_users)} kishi):**\n\n"
+                for i, u in enumerate(registered_users, 1):
+                    msg_text += f"{i}. **{u['name']}** | {u['phone']} | {u['username']}\n"
+                bot.send_message(chat_id, msg_text, parse_mode="Markdown", reply_markup=admin_menu())
+            return
+
+        elif text == "🧹 Ro'yxatni tozalash":
+            registered_users.clear()
+            bot.send_message(chat_id, "✅ Ro'yxat muvaffaqiyatli tozalandi!", reply_markup=admin_menu())
+            return
+
+        elif text == "📢 Barchaga xabar yuborish":
+            msg = bot.send_message(chat_id, "📝 Barcha foydalanuvchilarga yubormoqchi bo'lgan xabaringizni yozing:", reply_markup=types.ReplyKeyboardRemove())
+            bot.register_next_step_handler(msg, send_broadcast)
+            return
+
+        elif text == "⬅️ Asosiy menyuga qaytish":
+            bot.send_message(chat_id, "Asosiy menyudasiz:", reply_markup=main_menu())
+            return
+
+    # --- ODDIY MENYU TUGMALARI ---
     if text == "📚 Bizning kurs haqida":
         info_text = (
             "✨ **IT Savodxonligi Kursi Haqida:**\n\n"
@@ -148,7 +205,14 @@ def get_phone_number(message):
     full_name = user_data.get(chat_id, {}).get('name', 'Noma\'lum')
     username = f"@{message.from_user.username}" if message.from_user.username else "Mavjud emas"
 
-    # 1. Foydalanuvchiga muvaffaqiyatli ro'yxatdan o'tganligi haqida xabar
+    # Bazaga qo'shish
+    registered_users.append({
+        'name': full_name,
+        'phone': phone,
+        'username': username
+    })
+
+    # Foydalanuvchiga xabar
     success_text = (
         "🎉 **Muvaffaqiyatli ro'yxatdan o'tdingiz!**\n\n"
         f"👤 **Ism-Familiya:** {full_name}\n"
@@ -157,7 +221,7 @@ def get_phone_number(message):
     )
     bot.send_message(chat_id, success_text, parse_mode="Markdown", reply_markup=main_menu())
 
-    # 2. Sizning (Admin) shaxsiy Telegramingizga keladigan xabar
+    # Adminga (Sizga) darhol xabar yuborish
     admin_notification = (
         "📥 **YANGI O'QUVCHI RO'YXATDAN O'TDI!**\n\n"
         f"👤 **Ism-Familiya:** {full_name}\n"
@@ -169,6 +233,18 @@ def get_phone_number(message):
         bot.send_message(ADMIN_ID, admin_notification, parse_mode="Markdown")
     except Exception as e:
         print(f"Adminga xabar yuborishda xatolik: {e}")
+
+# ALL USERS BROADCAST FUNCTION
+def send_broadcast(message):
+    broadcast_text = message.text
+    count = 0
+    for cid in all_chat_ids:
+        try:
+            bot.send_message(cid, f"📢 **ADMIN XABARI:**\n\n{broadcast_text}", parse_mode="Markdown")
+            count += 1
+        except Exception:
+            pass
+    bot.send_message(ADMIN_ID, f"✅ Xabar {count} ta foydalanuvchiga yuborildi!", reply_markup=admin_menu())
 
 # BOTNI ISHGA TUSHIRISH (24/7)
 if __name__ == '__main__':
