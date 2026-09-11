@@ -23,55 +23,76 @@ def keep_alive():
     t.start()
 
 # MA'LUMOTLAR BAZASI (SQLite)
-def init_db():
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chat_id INTEGER UNIQUE,
-            full_name TEXT,
-            phone TEXT,
-            username TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
+DB_NAME = 'users.db'
 
-init_db()
+def get_db_connection():
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+    return conn
+
+def init_db():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER UNIQUE,
+                full_name TEXT,
+                phone TEXT,
+                username TEXT
+            )
+        ''')
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"DB Init xatosi: {e}")
 
 def save_user(chat_id, full_name, phone, username):
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT OR REPLACE INTO users (chat_id, full_name, phone, username)
-        VALUES (?, ?, ?, ?)
-    ''', (chat_id, full_name, phone, username))
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO users (chat_id, full_name, phone, username)
+            VALUES (?, ?, ?, ?)
+        ''', (chat_id, full_name, phone, username))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Save User xatosi: {e}")
 
 def get_all_registered():
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT full_name, phone, username FROM users WHERE full_name IS NOT NULL')
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT full_name, phone, username FROM users WHERE full_name IS NOT NULL')
+        rows = cursor.fetchall()
+        conn.close()
+        return rows
+    except Exception as e:
+        print(f"Get All xatosi: {e}")
+        return []
 
 def clear_db():
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM users')
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM users')
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Clear DB xatosi: {e}")
 
 def get_all_chat_ids():
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT chat_id FROM users')
-    rows = cursor.fetchall()
-    conn.close()
-    return [r[0] for r in rows]
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT chat_id FROM users')
+        rows = cursor.fetchall()
+        conn.close()
+        return [r[0] for r in rows if r[0] is not None]
+    except Exception as e:
+        print(f"Get Chat IDs xatosi: {e}")
+        return []
 
 # BOT SOZLAMALARI
 TOKEN = os.environ.get("BOT_TOKEN")
@@ -292,13 +313,14 @@ def send_broadcast(message):
             pass
     bot.send_message(ADMIN_ID, f"✅ Xabar {count} ta foydalanuvchiga yuborildi!", reply_markup=admin_menu())
 
-# BOTNI ISHGA TUSHIRISH (24/7)
+# BOTNI ISHGA TUSHIRISH (24/7 AVTO-RESTART BILAN)
 if __name__ == '__main__':
+    init_db()
     keep_alive()
     print("Bot 24/7 serverda ishga tushdi...")
     while True:
         try:
-            bot.polling(non_stop=True, interval=0, timeout=20)
+            bot.polling(non_stop=True, interval=2, timeout=30)
         except Exception as e:
-            print(f"Xatolik: {e}")
+            print(f"Aloqa xatosi: {e}")
             time.sleep(5)
