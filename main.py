@@ -25,6 +25,9 @@ def keep_alive():
 TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
+# SIZNING TELEGRAM ID'INGIZ (Ro'yxatdan o'tganlar haqidagi xabarlar shu ID'ga boradi)
+ADMIN_ID = "7612340447"
+
 user_data = {}
 
 # ASOSIY MENYU TUGMALARI
@@ -143,15 +146,29 @@ def get_phone_number(message):
         phone = message.text
 
     full_name = user_data.get(chat_id, {}).get('name', 'Noma\'lum')
+    username = f"@{message.from_user.username}" if message.from_user.username else "Mavjud emas"
 
+    # 1. Foydalanuvchiga muvaffaqiyatli ro'yxatdan o'tganligi haqida xabar
     success_text = (
         "🎉 **Muvaffaqiyatli ro'yxatdan o'tdingiz!**\n\n"
         f"👤 **Ism-Familiya:** {full_name}\n"
         f"📞 **Telefon:** {phone}\n\n"
         "Tashakkur! Tez orada siz bilan bog'lanamiz."
     )
-    
     bot.send_message(chat_id, success_text, parse_mode="Markdown", reply_markup=main_menu())
+
+    # 2. Sizning (Admin) shaxsiy Telegramingizga keladigan xabar
+    admin_notification = (
+        "📥 **YANGI O'QUVCHI RO'YXATDAN O'TDI!**\n\n"
+        f"👤 **Ism-Familiya:** {full_name}\n"
+        f"📞 **Telefon:** {phone}\n"
+        f"💬 **Telegram profil:** {username}"
+    )
+    
+    try:
+        bot.send_message(ADMIN_ID, admin_notification, parse_mode="Markdown")
+    except Exception as e:
+        print(f"Adminga xabar yuborishda xatolik: {e}")
 
 # BOTNI ISHGA TUSHIRISH (24/7)
 if __name__ == '__main__':
