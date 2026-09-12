@@ -6,7 +6,6 @@ from flask import Flask
 import telebot
 from telebot import types
 
-# Render serveri uchun veb-server (keep-alive)
 app = Flask('')
 
 @app.route('/')
@@ -22,7 +21,6 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# MA'LUMOTLAR BAZASI (SQLite)
 DB_NAME = 'users.db'
 
 def get_db_connection():
@@ -76,10 +74,10 @@ def get_all_registered():
         result = []
         for r in rows:
             chat_id = r[0]
-            full_name = r[1] if r[1] else "To'liq ro'yxatdan o'tmagan"
-            phone = r[2] if r[2] else "Kiritilmagan"
-            username = r[3] if r[3] else ""
-            is_paid = r[4] if r[4] else 0
+            full_name = str(r[1]) if r[1] else "To'liq ro'yxatdan o'tmagan"
+            phone = str(r[2]) if r[2] else "Kiritilmagan"
+            username = str(r[3]) if r[3] else ""
+            is_paid = r[4] if r[4] is not None else 0
             result.append((chat_id, full_name, phone, username, is_paid))
             
         return result
@@ -94,7 +92,7 @@ def get_user_payment_status(chat_id):
         cursor.execute('SELECT is_paid FROM users WHERE chat_id = ?', (chat_id,))
         row = cursor.fetchone()
         conn.close()
-        return row[0] if row else 0
+        return row[0] if row and row[0] is not None else 0
     except Exception as e:
         print(f"Payment Status xatosi: {e}")
         return 0
@@ -135,18 +133,15 @@ def get_all_chat_ids():
         print(f"Get Chat IDs xatosi: {e}")
         return []
 
-# BOT SOZLAMALARI
 TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
-# ADMINLAR ID RO'YXATI
 ADMIN_IDS = [7612340447, 443328100]
 user_data = {}
 
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
-# ASOSIY MENYU TUGMALARI
 def main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btn1 = types.KeyboardButton("📚 Bizning kurs haqida")
@@ -160,7 +155,6 @@ def main_menu():
     markup.add(btn5)
     return markup
 
-# ADMIN MENYU TUGMALARI
 def admin_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     btn1 = types.KeyboardButton("📢 Barcha o'quvchilarga xabar yuborish")
@@ -169,7 +163,6 @@ def admin_menu():
     markup.add(btn1, btn2, btn3)
     return markup
 
-# 1. /start KOMANDASI
 @bot.message_handler(commands=['start'])
 def start_command(message):
     save_user(message.chat.id, None, None, message.from_user.username)
@@ -181,7 +174,6 @@ def start_command(message):
     )
     bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=main_menu())
 
-# 2. /admin KOMANDASI
 @bot.message_handler(commands=['admin'])
 def admin_command(message):
     if is_admin(message.from_user.id):
@@ -194,14 +186,12 @@ def admin_command(message):
     else:
         bot.send_message(message.chat.id, "❌ Siz administrator emassiz!")
 
-# 3. XABARLARNI QABUL QILISH
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     text = message.text
 
-    # --- ADMIN TUGMALARI ---
     if is_admin(user_id):
         if text == "📢 Barcha o'quvchilarga xabar yuborish":
             msg = bot.send_message(chat_id, "📝 Barcha foydalanuvchilarga yubormoqchi bo'lgan xabaringizni yozing:", reply_markup=types.ReplyKeyboardRemove())
@@ -213,37 +203,38 @@ def handle_text(message):
             if not users:
                 bot.send_message(chat_id, "📭 Hozircha hech kim ro'yxatdan o'tmagan.", reply_markup=admin_menu())
             else:
-                bot.send_message(chat_id, f"📋 **Barcha foydalanuvchilar va o'quvchilar ro'yxati ({len(users)} kishi):**\n\n", parse_mode="Markdown")
+                bot.send_message(chat_id, f"📋 **Barcha foydalanuvchilar va o'quvchilar ro'yxati ({len(users)} kishi):**", parse_mode="Markdown")
                 for u in users:
-                    u_chat_id, full_name, phone, username, is_paid = u
-                    status_str = "✅ To'lov qilgan" if is_paid == 1 else "❌ To'lov qilmagan"
-                    username_str = f"@{username}" if username else "Mavjud emas"
-                    
-                    user_info = (
-                        f"👤 **Ism-Familiya:** {full_name}\n"
-                        f"📞 **Telefon:** {phone}\n"
-                        f"💬 **User:** {username_str}\n"
-                        f"💳 **To'lov:** {status_str}\n"
-                        f"🆔 **ID:** `{u_chat_id}`"
-                    )
-                    
-                    # TUGMALARNI CHIQARISH
-                    inline_kb = types.InlineKeyboardMarkup(row_width=1)
-                    if is_paid == 0:
-                        btn_pay = types.InlineKeyboardButton("✅ To'lov qildi deb belgilash", callback_data=f"pay_{u_chat_id}")
-                        inline_kb.add(btn_pay)
-                    
-                    btn_del = types.InlineKeyboardButton("❌ Chiqarib yuborish", callback_data=f"del_{u_chat_id}")
-                    inline_kb.add(btn_del)
-                    
-                    bot.send_message(chat_id, user_info, parse_mode="Markdown", reply_markup=inline_kb)
+                    try:
+                        u_chat_id, full_name, phone, username, is_paid = u
+                        status_str = "✅ To'lov qilgan" if is_paid == 1 else "❌ To'lov qilmagan"
+                        username_str = f"@{username}" if username else "Mavjud emas"
+                        
+                        user_info = (
+                            f"👤 **Ism-Familiya:** {full_name}\n"
+                            f"📞 **Telefon:** {phone}\n"
+                            f"💬 **User:** {username_str}\n"
+                            f"💳 **To'lov:** {status_str}\n"
+                            f"🆔 **ID:** `{u_chat_id}`"
+                        )
+                        
+                        inline_kb = types.InlineKeyboardMarkup(row_width=1)
+                        if is_paid == 0:
+                            btn_pay = types.InlineKeyboardButton("✅ To'lov qildi deb belgilash", callback_data=f"pay_{u_chat_id}")
+                            inline_kb.add(btn_pay)
+                        
+                        btn_del = types.InlineKeyboardButton("❌ Chiqarib yuborish", callback_data=f"del_{u_chat_id}")
+                        inline_kb.add(btn_del)
+                        
+                        bot.send_message(chat_id, user_info, parse_mode="Markdown", reply_markup=inline_kb)
+                    except Exception as e:
+                        print(f"Foydalanuvchini chiqarishda xatolik: {e}")
             return
 
         elif text == "⬅️ Asosiy menyuga qaytish":
             bot.send_message(chat_id, "Asosiy menyudasiz:", reply_markup=main_menu())
             return
 
-    # --- ODDIY MENYU TUGMALARI ---
     if text == "📚 Bizning kurs haqida":
         info_text = (
             "✨ **IT Savodxonligi Kursi Haqida:**\n\n"
@@ -300,14 +291,12 @@ def handle_text(message):
     else:
         bot.send_message(chat_id, "Iltimos, quyidagi menyudan birini tanlang 👇", reply_markup=main_menu())
 
-# INLINE TUGMALAR ISHLOVCHISI (PAY va DEL)
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     if not is_admin(call.from_user.id):
         bot.answer_callback_query(call.id, "❌ Siz admin emassiz!")
         return
 
-    # CHIARIB YUBORISH
     if call.data.startswith("del_"):
         target_chat_id = int(call.data.split("_")[1])
         if delete_user(target_chat_id):
@@ -316,14 +305,12 @@ def callback_handler(call):
         else:
             bot.answer_callback_query(call.id, "Xatolik yuz berdi!")
 
-    # TO'LOVNI TASDIQLASH
     elif call.data.startswith("pay_"):
         target_chat_id = int(call.data.split("_")[1])
         if mark_as_paid(target_chat_id):
             bot.answer_callback_query(call.id, "To'lov tasdiqlandi!")
             bot.edit_message_text(f"✅ **Ushbu o'quvchi to'lovni amalga oshirdi deb belgilandi!**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
             
-            # BARCHA ADMINLARGA BILDIRISHNOMA
             admin_msg = f"💳 **ADMIN XABARI:**\n\nID: `{target_chat_id}` bo'lgan o'quvchi **to'lovni amalga oshirdi!**"
             for admin_id in ADMIN_IDS:
                 try:
@@ -331,7 +318,6 @@ def callback_handler(call):
                 except Exception:
                     pass
 
-# RO'YXATDAN O'TISH BOSQICHLARI
 def get_full_name(message):
     chat_id = message.chat.id
     user_data[chat_id] = {'name': message.text}
@@ -359,10 +345,8 @@ def get_phone_number(message):
     full_name = user_data.get(chat_id, {}).get('name', 'Noma\'lum')
     username = message.from_user.username or ""
 
-    # BAZAGA SAQLASH
     save_user(chat_id, full_name, phone, username)
 
-    # FOYDALANUVCHIGA XABAR
     success_text = (
         "🎉 **Muvaffaqiyatli ro'yxatdan o'tdingiz!**\n\n"
         f"👤 **Ism-Familiya:** {full_name}\n"
@@ -371,7 +355,6 @@ def get_phone_number(message):
     )
     bot.send_message(chat_id, success_text, parse_mode="Markdown", reply_markup=main_menu())
 
-    # BARCHA ADMINLARGA DARHOL XABAR
     username_str = f"@{username}" if username else "Mavjud emas"
     admin_notification = (
         "📥 **YANGI O'QUVCHI RO'YXATDAN O'TDI!**\n\n"
@@ -387,7 +370,6 @@ def get_phone_number(message):
         except Exception as e:
             print(f"Adminga xabar yuborishda xatolik: {e}")
 
-# BROADCAST FUNCTION
 def send_broadcast(message):
     broadcast_text = message.text
     chat_ids = get_all_chat_ids()
@@ -405,7 +387,6 @@ def send_broadcast(message):
         except Exception:
             pass
 
-# BOTNI ISHGA TUSHIRISH (24/7)
 if __name__ == '__main__':
     init_db()
     keep_alive()
