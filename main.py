@@ -6,8 +6,8 @@ from flask import Flask
 import telebot
 from telebot import types
 
-# Render serveri uchun veb-server (keep-alive)
-app = Flask('')
+# 1. FLASK KEEP-ALIVE SERVER
+app = Flask(__name__)
 
 @app.route('/')
 def home():
@@ -22,86 +22,81 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# MA'LUMOTLAR BAZASI (SQLite)
+# 2. MA'LUMOTLAR BAZASI (SQLite Thread-Safe Sozlama)
 DB_NAME = 'users.db'
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+    # check_same_thread=False va timeout qo'shildi
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False, timeout=10)
     return conn
 
 def init_db():
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                chat_id INTEGER UNIQUE,
-                full_name TEXT,
-                phone TEXT,
-                username TEXT
-            )
-        ''')
-        conn.commit()
-        conn.close()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER UNIQUE,
+                    full_name TEXT,
+                    phone TEXT,
+                    username TEXT
+                )
+            ''')
+            conn.commit()
     except Exception as e:
         print(f"DB Init xatosi: {e}")
 
 def save_user(chat_id, full_name, phone, username):
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT OR REPLACE INTO users (chat_id, full_name, phone, username)
-            VALUES (?, ?, ?, ?)
-        ''', (chat_id, full_name, phone, username))
-        conn.commit()
-        conn.close()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO users (chat_id, full_name, phone, username)
+                VALUES (?, ?, ?, ?)
+            ''', (chat_id, full_name, phone, username))
+            conn.commit()
     except Exception as e:
         print(f"Save User xatosi: {e}")
 
 def get_all_registered():
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT full_name, phone, username FROM users WHERE full_name IS NOT NULL')
-        rows = cursor.fetchall()
-        conn.close()
-        return rows
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT full_name, phone, username FROM users WHERE full_name IS NOT NULL')
+            return cursor.fetchall()
     except Exception as e:
         print(f"Get All xatosi: {e}")
         return []
 
 def clear_db():
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM users')
-        conn.commit()
-        conn.close()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM users')
+            conn.commit()
     except Exception as e:
         print(f"Clear DB xatosi: {e}")
 
 def get_all_chat_ids():
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT chat_id FROM users')
-        rows = cursor.fetchall()
-        conn.close()
-        return [r[0] for r in rows if r[0] is not None]
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT chat_id FROM users')
+            rows = cursor.fetchall()
+            return [r[0] for r in rows if r[0] is not None]
     except Exception as e:
         print(f"Get Chat IDs xatosi: {e}")
         return []
 
-# BOT SOZLAMALARI
+# 3. BOT SOZLAMALARI
 TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
 ADMIN_ID = 7612340447
 user_data = {}
 
-# ASOSIY MENYU TUGMALARI
+# MENYULAR
 def main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btn1 = types.KeyboardButton("📚 Bizning kurs haqida")
@@ -109,13 +104,11 @@ def main_menu():
     btn3 = types.KeyboardButton("🎥 Dars videolari")
     btn4 = types.KeyboardButton("📝 Kursga qo'shilish")
     btn5 = types.KeyboardButton("💳 To'lov holati")
-    
     markup.add(btn1, btn2)
     markup.add(btn3, btn4)
     markup.add(btn5)
     return markup
 
-# ADMIN MENYU TUGMALARI
 def admin_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btn1 = types.KeyboardButton("📋 Ro'yxatni ko'rish")
@@ -126,7 +119,7 @@ def admin_menu():
     markup.add(btn3, btn4)
     return markup
 
-# 1. /start KOMANDASI
+# HANDLERLAR
 @bot.message_handler(commands=['start'])
 def start_command(message):
     save_user(message.chat.id, None, None, message.from_user.username)
@@ -138,7 +131,6 @@ def start_command(message):
     )
     bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=main_menu())
 
-# 2. /admin KOMANDASI
 @bot.message_handler(commands=['admin'])
 def admin_command(message):
     if message.from_user.id == ADMIN_ID:
@@ -151,14 +143,12 @@ def admin_command(message):
     else:
         bot.send_message(message.chat.id, "❌ Siz administrator emassiz!")
 
-# 3. XABARLARNI QABUL QILISH
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     text = message.text
 
-    # --- ADMIN TUGMALARI ---
     if user_id == ADMIN_ID:
         if text == "📋 Ro'yxatni ko'rish":
             users = get_all_registered()
@@ -186,7 +176,6 @@ def handle_text(message):
             bot.send_message(chat_id, "Asosiy menyudasiz:", reply_markup=main_menu())
             return
 
-    # --- ODDIY MENYU TUGMALARI ---
     if text == "📚 Bizning kurs haqida":
         info_text = (
             "✨ **IT Savodxonligi Kursi Haqida:**\n\n"
@@ -215,7 +204,6 @@ def handle_text(message):
         inline_markup = types.InlineKeyboardMarkup()
         btn_link = types.InlineKeyboardButton("🔗 Kanalga o'tish", url="https://t.me/+6VsJbiT7u340ZWQy")
         inline_markup.add(btn_link)
-
         video_text = (
             "🎥 **Dars Videolari:**\n\n"
             "Barcha o'quv video darsliklarimiz maxsus Telegram kanalimizga joylab boriladi.\n"
@@ -246,11 +234,9 @@ def handle_text(message):
     else:
         bot.send_message(chat_id, "Iltimos, quyidagi menyudan birini tanlang 👇", reply_markup=main_menu())
 
-# RO'YXATDAN O'TISH BOSQICHLARI
 def get_full_name(message):
     chat_id = message.chat.id
     user_data[chat_id] = {'name': message.text}
-
     phone_markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     btn_phone = types.KeyboardButton("📱 Telefon raqamimni yuborish", request_contact=True)
     phone_markup.add(btn_phone)
@@ -265,19 +251,12 @@ def get_full_name(message):
 
 def get_phone_number(message):
     chat_id = message.chat.id
-    
-    if message.contact:
-        phone = message.contact.phone_number
-    else:
-        phone = message.text
-
+    phone = message.contact.phone_number if message.contact else message.text
     full_name = user_data.get(chat_id, {}).get('name', 'Noma\'lum')
     username = message.from_user.username or ""
 
-    # BAZAGA SAQLASH
     save_user(chat_id, full_name, phone, username)
 
-    # FOYDALANUVCHIGA XABAR
     success_text = (
         "🎉 **Muvaffaqiyatli ro'yxatdan o'tdingiz!**\n\n"
         f"👤 **Ism-Familiya:** {full_name}\n"
@@ -286,7 +265,6 @@ def get_phone_number(message):
     )
     bot.send_message(chat_id, success_text, parse_mode="Markdown", reply_markup=main_menu())
 
-    # ADMINGA DARHOL XABAR
     username_str = f"@{username}" if username else "Mavjud emas"
     admin_notification = (
         "📥 **YANGI O'QUVCHI RO'YXATDAN O'TDI!**\n\n"
@@ -300,7 +278,6 @@ def get_phone_number(message):
     except Exception as e:
         print(f"Adminga xabar yuborishda xatolik: {e}")
 
-# BROADCAST FUNCTION
 def send_broadcast(message):
     broadcast_text = message.text
     chat_ids = get_all_chat_ids()
@@ -313,7 +290,6 @@ def send_broadcast(message):
             pass
     bot.send_message(ADMIN_ID, f"✅ Xabar {count} ta foydalanuvchiga yuborildi!", reply_markup=admin_menu())
 
-# BOTNI ISHGA TUSHIRISH (24/7 AVTO-RESTART BILAN)
 if __name__ == '__main__':
     init_db()
     keep_alive()
