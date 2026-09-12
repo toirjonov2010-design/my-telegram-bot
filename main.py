@@ -6,8 +6,8 @@ from flask import Flask
 import telebot
 from telebot import types
 
-# 1. FLASK KEEP-ALIVE SERVER
-app = Flask(__name__)
+# Render serveri uchun veb-server (keep-alive)
+app = Flask('')
 
 @app.route('/')
 def home():
@@ -22,81 +22,121 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# 2. MA'LUMOTLAR BAZASI (SQLite Thread-Safe Sozlama)
+# MA'LUMOTLAR BAZASI (SQLite)
 DB_NAME = 'users.db'
 
 def get_db_connection():
-    # check_same_thread=False va timeout qo'shildi
-    conn = sqlite3.connect(DB_NAME, check_same_thread=False, timeout=10)
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     return conn
 
 def init_db():
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    chat_id INTEGER UNIQUE,
-                    full_name TEXT,
-                    phone TEXT,
-                    username TEXT
-                )
-            ''')
-            conn.commit()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER UNIQUE,
+                full_name TEXT,
+                phone TEXT,
+                username TEXT,
+                is_paid INTEGER DEFAULT 0
+            )
+        ''')
+        conn.commit()
+        conn.close()
     except Exception as e:
         print(f"DB Init xatosi: {e}")
 
 def save_user(chat_id, full_name, phone, username):
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT OR REPLACE INTO users (chat_id, full_name, phone, username)
-                VALUES (?, ?, ?, ?)
-            ''', (chat_id, full_name, phone, username))
-            conn.commit()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO users (chat_id, full_name, phone, username)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(chat_id) DO UPDATE SET
+                full_name=COALESCE(EXCLUDED.full_name, users.full_name),
+                phone=COALESCE(EXCLUDED.phone, users.phone),
+                username=COALESCE(EXCLUDED.username, users.username)
+        ''', (chat_id, full_name, phone, username))
+        conn.commit()
+        conn.close()
     except Exception as e:
         print(f"Save User xatosi: {e}")
 
 def get_all_registered():
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT full_name, phone, username FROM users WHERE full_name IS NOT NULL')
-            return cursor.fetchall()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT chat_id, full_name, phone, username, is_paid FROM users WHERE full_name IS NOT NULL')
+        rows = cursor.fetchall()
+        conn.close()
+        return rows
     except Exception as e:
         print(f"Get All xatosi: {e}")
         return []
 
-def clear_db():
+def get_user_payment_status(chat_id):
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM users')
-            conn.commit()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT is_paid FROM users WHERE chat_id = ?', (chat_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return row[0] if row else 0
     except Exception as e:
-        print(f"Clear DB xatosi: {e}")
+        print(f"Payment Status xatosi: {e}")
+        return 0
+
+def mark_as_paid(chat_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE users SET is_paid = 1 WHERE chat_id = ?', (chat_id,))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Mark Paid xatosi: {e}")
+        return False
+
+def delete_user(chat_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM users WHERE chat_id = ?', (chat_id,))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Delete User xatosi: {e}")
+        return False
 
 def get_all_chat_ids():
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT chat_id FROM users')
-            rows = cursor.fetchall()
-            return [r[0] for r in rows if r[0] is not None]
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT chat_id FROM users')
+        rows = cursor.fetchall()
+        conn.close()
+        return [r[0] for r in rows if r[0] is not None]
     except Exception as e:
         print(f"Get Chat IDs xatosi: {e}")
         return []
 
-# 3. BOT SOZLAMALARI
+# BOT SOZLAMALARI
 TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
-ADMIN_ID = 7612340447
+# ADMINLAR ID RO'YXATI
+ADMIN_IDS = [7612340447, 443328100]
 user_data = {}
 
-# MENYULAR
+def is_admin(user_id):
+    return user_id in ADMIN_IDS
+
+# ASOSIY MENYU TUGMALARI
 def main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btn1 = types.KeyboardButton("📚 Bizning kurs haqida")
@@ -104,22 +144,23 @@ def main_menu():
     btn3 = types.KeyboardButton("🎥 Dars videolari")
     btn4 = types.KeyboardButton("📝 Kursga qo'shilish")
     btn5 = types.KeyboardButton("💳 To'lov holati")
+    
     markup.add(btn1, btn2)
     markup.add(btn3, btn4)
     markup.add(btn5)
     return markup
 
+# ADMIN MENYU TUGMALARI
 def admin_menu():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    btn1 = types.KeyboardButton("📋 Ro'yxatni ko'rish")
-    btn2 = types.KeyboardButton("🧹 Ro'yxatni tozalash")
-    btn3 = types.KeyboardButton("📢 Barchaga xabar yuborish")
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
+    btn1 = types.KeyboardButton("📢 Barcha o'quvchilarga xabar yuborish")
+    btn2 = types.KeyboardButton("👥 O'quvchilarni boshqarish")
+    btn3 = types.KeyboardButton("💳 To'lovlarni boshqarish")
     btn4 = types.KeyboardButton("⬅️ Asosiy menyuga qaytish")
-    markup.add(btn1, btn2)
-    markup.add(btn3, btn4)
+    markup.add(btn1, btn2, btn3, btn4)
     return markup
 
-# HANDLERLAR
+# 1. /start KOMANDASI
 @bot.message_handler(commands=['start'])
 def start_command(message):
     save_user(message.chat.id, None, None, message.from_user.username)
@@ -131,9 +172,10 @@ def start_command(message):
     )
     bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=main_menu())
 
+# 2. /admin KOMANDASI
 @bot.message_handler(commands=['admin'])
 def admin_command(message):
-    if message.from_user.id == ADMIN_ID:
+    if is_admin(message.from_user.id):
         bot.send_message(
             message.chat.id, 
             "⚙️ **Admin paneliga xush kelibsiz!**\nQuyidagi amallardan birini tanlang:", 
@@ -143,39 +185,71 @@ def admin_command(message):
     else:
         bot.send_message(message.chat.id, "❌ Siz administrator emassiz!")
 
+# 3. XABARLARNI QABUL QILISH
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
     text = message.text
 
-    if user_id == ADMIN_ID:
-        if text == "📋 Ro'yxatni ko'rish":
+    # --- ADMIN TUGMALARI ---
+    if is_admin(user_id):
+        if text == "📢 Barcha o'quvchilarga xabar yuborish":
+            msg = bot.send_message(chat_id, "📝 Barcha foydalanuvchilarga yubormoqchi bo'lgan xabaringizni yozing:", reply_markup=types.ReplyKeyboardRemove())
+            bot.register_next_step_handler(msg, send_broadcast)
+            return
+
+        elif text == "👥 O'quvchilarni boshqarish":
             users = get_all_registered()
             if not users:
                 bot.send_message(chat_id, "📭 Hozircha hech kim ro'yxatdan o'tmagan.", reply_markup=admin_menu())
             else:
-                msg_text = f"📋 **Ro'yxatdan o'tganlar ({len(users)} kishi):**\n\n"
-                for i, u in enumerate(users, 1):
-                    username_str = f"@{u[2]}" if u[2] else "Mavjud emas"
-                    msg_text += f"{i}. **{u[0]}** | 📞 {u[1]} | 💬 {username_str}\n"
-                bot.send_message(chat_id, msg_text, parse_mode="Markdown", reply_markup=admin_menu())
+                bot.send_message(chat_id, f"📋 **Ro'yxatdan o'tganlar ({len(users)} kishi):**", parse_mode="Markdown")
+                for u in users:
+                    u_chat_id, full_name, phone, username, is_paid = u
+                    username_str = f"@{username}" if username else "Mavjud emas"
+                    user_info = (
+                        f"👤 **Ism:** {full_name}\n"
+                        f"📞 **Tel:** {phone}\n"
+                        f"💬 **User:** {username_str}\n"
+                        f"🆔 **ID:** `{u_chat_id}`"
+                    )
+                    inline_kb = types.InlineKeyboardMarkup()
+                    btn_del = types.InlineKeyboardButton("❌ Chiqarib yuborish", callback_data=f"del_{u_chat_id}")
+                    inline_kb.add(btn_del)
+                    bot.send_message(chat_id, user_info, parse_mode="Markdown", reply_markup=inline_kb)
             return
 
-        elif text == "🧹 Ro'yxatni tozalash":
-            clear_db()
-            bot.send_message(chat_id, "✅ Ro'yxat muvaffaqiyatli tozalandi!", reply_markup=admin_menu())
-            return
-
-        elif text == "📢 Barchaga xabar yuborish":
-            msg = bot.send_message(chat_id, "📝 Barcha foydalanuvchilarga yubormoqchi bo'lgan xabaringizni yozing:", reply_markup=types.ReplyKeyboardRemove())
-            bot.register_next_step_handler(msg, send_broadcast)
+        elif text == "💳 To'lovlarni boshqarish":
+            users = get_all_registered()
+            if not users:
+                bot.send_message(chat_id, "📭 Hozircha hech kim ro'yxatdan o'tmagan.", reply_markup=admin_menu())
+            else:
+                bot.send_message(chat_id, "💳 **O'quvchilarning to'lov holati:**", parse_mode="Markdown")
+                for u in users:
+                    u_chat_id, full_name, phone, username, is_paid = u
+                    status_str = "✅ To'langan" if is_paid == 1 else "❌ Hali to'lamagan"
+                    username_str = f"@{username}" if username else "Mavjud emas"
+                    
+                    user_info = (
+                        f"👤 **Ism:** {full_name}\n"
+                        f"📞 **Tel:** {phone}\n"
+                        f"💬 **User:** {username_str}\n"
+                        f"📌 **Holat:** {status_str}"
+                    )
+                    inline_kb = types.InlineKeyboardMarkup()
+                    if is_paid == 0:
+                        btn_pay = types.InlineKeyboardButton("✅ To'lovni amalga oshirdi", callback_data=f"pay_{u_chat_id}")
+                        inline_kb.add(btn_pay)
+                    
+                    bot.send_message(chat_id, user_info, parse_mode="Markdown", reply_markup=inline_kb)
             return
 
         elif text == "⬅️ Asosiy menyuga qaytish":
             bot.send_message(chat_id, "Asosiy menyudasiz:", reply_markup=main_menu())
             return
 
+    # --- ODDIY MENYU TUGMALARI ---
     if text == "📚 Bizning kurs haqida":
         info_text = (
             "✨ **IT Savodxonligi Kursi Haqida:**\n\n"
@@ -204,6 +278,7 @@ def handle_text(message):
         inline_markup = types.InlineKeyboardMarkup()
         btn_link = types.InlineKeyboardButton("🔗 Kanalga o'tish", url="https://t.me/+6VsJbiT7u340ZWQy")
         inline_markup.add(btn_link)
+
         video_text = (
             "🎥 **Dars Videolari:**\n\n"
             "Barcha o'quv video darsliklarimiz maxsus Telegram kanalimizga joylab boriladi.\n"
@@ -221,22 +296,52 @@ def handle_text(message):
         bot.register_next_step_handler(msg, get_full_name)
 
     elif text == "💳 To'lov holati":
-        payment_text = (
-            "💳 **To'lov holatingiz:**\n\n"
-            "✅ **Holat:** Siz to'lovni amalga oshirgansiz!\n"
-            "💰 **Qarzdorlik:** `0 so'm`\n\n"
-            "--- \n"
-            "⚠️ _Agar to'lov qilmagan bo'lsangiz:_\n"
-            "❌ **To'lovni amalga oshiring:** Qarzdorlik `100 000 so'm`"
-        )
+        is_paid = get_user_payment_status(chat_id)
+        if is_paid == 1:
+            payment_text = "✅ **Siz to'lovni amalga oshirgansiz!**"
+        else:
+            payment_text = "❌ **Siz hali to'lov qilmagansiz!**"
         bot.send_message(chat_id, payment_text, parse_mode="Markdown")
 
     else:
         bot.send_message(chat_id, "Iltimos, quyidagi menyudan birini tanlang 👇", reply_markup=main_menu())
 
+# INLINE TUGMALAR ISHLOVCHISI (PAY va DEL)
+@bot.callback_query_handler(func=lambda call: True)
+def callback_handler(call):
+    if not is_admin(call.from_user.id):
+        bot.answer_callback_query(call.id, "❌ Siz admin emassiz!")
+        return
+
+    # CHIARIB YUBORISH
+    if call.data.startswith("del_"):
+        target_chat_id = int(call.data.split("_")[1])
+        if delete_user(target_chat_id):
+            bot.answer_callback_query(call.id, "O'quvchi ro'yxatdan o'chirildi!")
+            bot.edit_message_text(f"❌ **Ushbu o'quvchi bazadan chiqarib yuborildi.**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+        else:
+            bot.answer_callback_query(call.id, "Xatolik yuz berdi!")
+
+    # TO'LOVNI TASDIQLASH
+    elif call.data.startswith("pay_"):
+        target_chat_id = int(call.data.split("_")[1])
+        if mark_as_paid(target_chat_id):
+            bot.answer_callback_query(call.id, "To'lov tasdiqlandi!")
+            bot.edit_message_text(f"✅ **Ushbu o'quvchi to'lovni amalga oshirdi deb belgilandi!**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            
+            # BARCHA ADMINLARGA BILDIRISHNOMA
+            admin_msg = f"💳 **ADMIN XABARI:**\n\nID: `{target_chat_id}` bo'lgan o'quvchi **to'lovni amalga oshirdi!**"
+            for admin_id in ADMIN_IDS:
+                try:
+                    bot.send_message(admin_id, admin_msg, parse_mode="Markdown")
+                except Exception:
+                    pass
+
+# RO'YXATDAN O'TISH BOSQICHLARI
 def get_full_name(message):
     chat_id = message.chat.id
     user_data[chat_id] = {'name': message.text}
+
     phone_markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     btn_phone = types.KeyboardButton("📱 Telefon raqamimni yuborish", request_contact=True)
     phone_markup.add(btn_phone)
@@ -251,12 +356,19 @@ def get_full_name(message):
 
 def get_phone_number(message):
     chat_id = message.chat.id
-    phone = message.contact.phone_number if message.contact else message.text
+    
+    if message.contact:
+        phone = message.contact.phone_number
+    else:
+        phone = message.text
+
     full_name = user_data.get(chat_id, {}).get('name', 'Noma\'lum')
     username = message.from_user.username or ""
 
+    # BAZAGA SAQLASH
     save_user(chat_id, full_name, phone, username)
 
+    # FOYDALANUVCHIGA XABAR
     success_text = (
         "🎉 **Muvaffaqiyatli ro'yxatdan o'tdingiz!**\n\n"
         f"👤 **Ism-Familiya:** {full_name}\n"
@@ -265,19 +377,23 @@ def get_phone_number(message):
     )
     bot.send_message(chat_id, success_text, parse_mode="Markdown", reply_markup=main_menu())
 
+    # BARCHA ADMINLARGA DARHOL XABAR
     username_str = f"@{username}" if username else "Mavjud emas"
     admin_notification = (
         "📥 **YANGI O'QUVCHI RO'YXATDAN O'TDI!**\n\n"
         f"👤 **Ism-Familiya:** {full_name}\n"
         f"📞 **Telefon:** {phone}\n"
-        f"💬 **Telegram profil:** {username_str}"
+        f"💬 **Telegram profil:** {username_str}\n"
+        f"🆔 **ID:** `{chat_id}`"
     )
     
-    try:
-        bot.send_message(ADMIN_ID, admin_notification, parse_mode="Markdown")
-    except Exception as e:
-        print(f"Adminga xabar yuborishda xatolik: {e}")
+    for admin_id in ADMIN_IDS:
+        try:
+            bot.send_message(admin_id, admin_notification, parse_mode="Markdown")
+        except Exception as e:
+            print(f"Adminga xabar yuborishda xatolik: {e}")
 
+# BROADCAST FUNCTION
 def send_broadcast(message):
     broadcast_text = message.text
     chat_ids = get_all_chat_ids()
@@ -288,8 +404,14 @@ def send_broadcast(message):
             count += 1
         except Exception:
             pass
-    bot.send_message(ADMIN_ID, f"✅ Xabar {count} ta foydalanuvchiga yuborildi!", reply_markup=admin_menu())
+            
+    for admin_id in ADMIN_IDS:
+        try:
+            bot.send_message(admin_id, f"✅ Xabar {count} ta foydalanuvchiga yuborildi!", reply_markup=admin_menu())
+        except Exception:
+            pass
 
+# BOTNI ISHGA TUSHIRISH (24/7)
 if __name__ == '__main__':
     init_db()
     keep_alive()
