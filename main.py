@@ -69,10 +69,20 @@ def get_all_registered():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT chat_id, full_name, phone, username, is_paid FROM users WHERE full_name IS NOT NULL')
+        cursor.execute('SELECT chat_id, full_name, phone, username, is_paid FROM users')
         rows = cursor.fetchall()
         conn.close()
-        return rows
+        
+        result = []
+        for r in rows:
+            chat_id = r[0]
+            full_name = r[1] if r[1] else "To'liq ro'yxatdan o'tmagan"
+            phone = r[2] if r[2] else "Kiritilmagan"
+            username = r[3] if r[3] else ""
+            is_paid = r[4] if r[4] else 0
+            result.append((chat_id, full_name, phone, username, is_paid))
+            
+        return result
     except Exception as e:
         print(f"Get All xatosi: {e}")
         return []
@@ -155,9 +165,8 @@ def admin_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
     btn1 = types.KeyboardButton("📢 Barcha o'quvchilarga xabar yuborish")
     btn2 = types.KeyboardButton("👥 O'quvchilarni boshqarish")
-    btn3 = types.KeyboardButton("💳 To'lovlarni boshqarish")
-    btn4 = types.KeyboardButton("⬅️ Asosiy menyuga qaytish")
-    markup.add(btn1, btn2, btn3, btn4)
+    btn3 = types.KeyboardButton("⬅️ Asosiy menyuga qaytish")
+    markup.add(btn1, btn2, btn3)
     return markup
 
 # 1. /start KOMANDASI
@@ -204,43 +213,28 @@ def handle_text(message):
             if not users:
                 bot.send_message(chat_id, "📭 Hozircha hech kim ro'yxatdan o'tmagan.", reply_markup=admin_menu())
             else:
-                bot.send_message(chat_id, f"📋 **Ro'yxatdan o'tganlar ({len(users)} kishi):**", parse_mode="Markdown")
+                bot.send_message(chat_id, f"📋 **Barcha foydalanuvchilar va o'quvchilar ro'yxati ({len(users)} kishi):**\n\n", parse_mode="Markdown")
                 for u in users:
                     u_chat_id, full_name, phone, username, is_paid = u
-                    username_str = f"@{username}" if username else "Mavjud emas"
-                    user_info = (
-                        f"👤 **Ism:** {full_name}\n"
-                        f"📞 **Tel:** {phone}\n"
-                        f"💬 **User:** {username_str}\n"
-                        f"🆔 **ID:** `{u_chat_id}`"
-                    )
-                    inline_kb = types.InlineKeyboardMarkup()
-                    btn_del = types.InlineKeyboardButton("❌ Chiqarib yuborish", callback_data=f"del_{u_chat_id}")
-                    inline_kb.add(btn_del)
-                    bot.send_message(chat_id, user_info, parse_mode="Markdown", reply_markup=inline_kb)
-            return
-
-        elif text == "💳 To'lovlarni boshqarish":
-            users = get_all_registered()
-            if not users:
-                bot.send_message(chat_id, "📭 Hozircha hech kim ro'yxatdan o'tmagan.", reply_markup=admin_menu())
-            else:
-                bot.send_message(chat_id, "💳 **O'quvchilarning to'lov holati:**", parse_mode="Markdown")
-                for u in users:
-                    u_chat_id, full_name, phone, username, is_paid = u
-                    status_str = "✅ To'langan" if is_paid == 1 else "❌ Hali to'lamagan"
+                    status_str = "✅ To'lov qilgan" if is_paid == 1 else "❌ To'lov qilmagan"
                     username_str = f"@{username}" if username else "Mavjud emas"
                     
                     user_info = (
-                        f"👤 **Ism:** {full_name}\n"
-                        f"📞 **Tel:** {phone}\n"
+                        f"👤 **Ism-Familiya:** {full_name}\n"
+                        f"📞 **Telefon:** {phone}\n"
                         f"💬 **User:** {username_str}\n"
-                        f"📌 **Holat:** {status_str}"
+                        f"💳 **To'lov:** {status_str}\n"
+                        f"🆔 **ID:** `{u_chat_id}`"
                     )
-                    inline_kb = types.InlineKeyboardMarkup()
+                    
+                    # TUGMALARNI CHIQARISH
+                    inline_kb = types.InlineKeyboardMarkup(row_width=1)
                     if is_paid == 0:
-                        btn_pay = types.InlineKeyboardButton("✅ To'lovni amalga oshirdi", callback_data=f"pay_{u_chat_id}")
+                        btn_pay = types.InlineKeyboardButton("✅ To'lov qildi deb belgilash", callback_data=f"pay_{u_chat_id}")
                         inline_kb.add(btn_pay)
+                    
+                    btn_del = types.InlineKeyboardButton("❌ Chiqarib yuborish", callback_data=f"del_{u_chat_id}")
+                    inline_kb.add(btn_del)
                     
                     bot.send_message(chat_id, user_info, parse_mode="Markdown", reply_markup=inline_kb)
             return
@@ -317,7 +311,7 @@ def callback_handler(call):
     if call.data.startswith("del_"):
         target_chat_id = int(call.data.split("_")[1])
         if delete_user(target_chat_id):
-            bot.answer_callback_query(call.id, "O'quvchi ro'yxatdan o'chirildi!")
+            bot.answer_callback_query(call.id, "O'quvchi bazadan o'chirildi!")
             bot.edit_message_text(f"❌ **Ushbu o'quvchi bazadan chiqarib yuborildi.**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
         else:
             bot.answer_callback_query(call.id, "Xatolik yuz berdi!")
