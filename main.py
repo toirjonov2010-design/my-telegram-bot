@@ -168,19 +168,18 @@ def start_command(message):
     save_user(message.chat.id, None, None, message.from_user.username)
     first_name = message.from_user.first_name or "O'quvchi"
     text = (
-        f"👋 **Salom, {first_name}!**\n\n"
+        f"👋 Salom, {first_name}!\n\n"
         f"IT ta'lim platformamizning rasmiy botiga xush kelibsiz!\n"
         f"Quyidagi menyudan o'zingizga kerakli bo'limni tanlang:"
     )
-    bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=main_menu())
+    bot.send_message(message.chat.id, text, reply_markup=main_menu())
 
 @bot.message_handler(commands=['admin'])
 def admin_command(message):
     if is_admin(message.from_user.id):
         bot.send_message(
             message.chat.id, 
-            "⚙️ **Admin paneliga xush kelibsiz!**\nQuyidagi amallardan birini tanlang:", 
-            parse_mode="Markdown", 
+            "⚙️ Admin paneliga xush kelibsiz!\nQuyidagi amallardan birini tanlang:", 
             reply_markup=admin_menu()
         )
     else:
@@ -203,7 +202,7 @@ def handle_text(message):
             if not users:
                 bot.send_message(chat_id, "📭 Hozircha hech kim ro'yxatdan o'tmagan.", reply_markup=admin_menu())
             else:
-                bot.send_message(chat_id, f"📋 **Barcha foydalanuvchilar va o'quvchilar ro'yxati ({len(users)} kishi):**", parse_mode="Markdown")
+                bot.send_message(chat_id, f"📋 Barcha foydalanuvchilar va o'quvchilar ro'yxati ({len(users)} kishi):")
                 for u in users:
                     try:
                         u_chat_id, full_name, phone, username, is_paid = u
@@ -211,11 +210,11 @@ def handle_text(message):
                         username_str = f"@{username}" if username else "Mavjud emas"
                         
                         user_info = (
-                            f"👤 **Ism-Familiya:** {full_name}\n"
-                            f"📞 **Telefon:** {phone}\n"
-                            f"💬 **User:** {username_str}\n"
-                            f"💳 **To'lov:** {status_str}\n"
-                            f"🆔 **ID:** `{u_chat_id}`"
+                            f"👤 Ism-Familiya: {full_name}\n"
+                            f"📞 Telefon: {phone}\n"
+                            f"💬 User: {username_str}\n"
+                            f"💳 To'lov: {status_str}\n"
+                            f"🆔 ID: {u_chat_id}"
                         )
                         
                         inline_kb = types.InlineKeyboardMarkup(row_width=1)
@@ -226,7 +225,7 @@ def handle_text(message):
                         btn_del = types.InlineKeyboardButton("❌ Chiqarib yuborish", callback_data=f"del_{u_chat_id}")
                         inline_kb.add(btn_del)
                         
-                        bot.send_message(chat_id, user_info, parse_mode="Markdown", reply_markup=inline_kb)
+                        bot.send_message(chat_id, user_info, reply_markup=inline_kb)
                     except Exception as e:
                         print(f"Foydalanuvchini chiqarishda xatolik: {e}")
             return
@@ -237,27 +236,27 @@ def handle_text(message):
 
     if text == "📚 Bizning kurs haqida":
         info_text = (
-            "✨ **IT Savodxonligi Kursi Haqida:**\n\n"
-            "💻 **Noldan boshlanadigan ta'lim:**\n"
-            "└ _Hech qanday boshlang'ich bilim talab etilmaydi!_\n\n"
-            "🚀 **Amaliy va intensiv yondashuv:**\n"
-            "└ _Har bir dars real mashqlar va kompyuterlarda amaliy topshiriqlar asosida o'tiladi._\n\n"
-            "👨‍🏫 **Individual yondashuv:**\n"
-            "└ _Har bir o'quvchining o'zlashtirishiga alohida e'tibor qaratiladi._\n\n"
-            "📜 **Zamonaviy sharoitlar va sertifikat:**\n"
-            "└ _Kurs yakunida bitiruvchilarga maxsus sertifikat taqdim etiladi!_"
+            "✨ IT Savodxonligi Kursi Haqida:\n\n"
+            "💻 Noldan boshlanadigan ta'lim:\n"
+            "└ Hech qanday boshlang'ich bilim talab etilmaydi!\n\n"
+            "🚀 Amaliy va intensiv yondashuv:\n"
+            "└ Har bir dars real mashqlar va kompyuterlarda amaliy topshiriqlar asosida o'tiladi.\n\n"
+            "👨‍🏫 Individual yondashuv:\n"
+            "└ Har bir o'quvchining o'zlashtirishiga alohida e'tibor qaratiladi.\n\n"
+            "📜 Zamonaviy sharoitlar va sertifikat:\n"
+            "└ Kurs yakunida bitiruvchilarga maxsus sertifikat taqdim etiladi!"
         )
-        bot.send_message(chat_id, info_text, parse_mode="Markdown")
+        bot.send_message(chat_id, info_text)
 
     elif text == "📞 Biz bilan bog'lanish":
         contact_text = (
-            "📞 **Biz bilan bog'lanish:**\n\n"
-            "👨‍🏫 **Mas'ul xodimlar:**\n"
+            "📞 Biz bilan bog'lanish:\n\n"
+            "👨‍🏫 Mas'ul xodimlar:\n"
             "• Qodirboyev Xudobergan: +998 90 560 59 59\n"
             "• Eraliyev Hayot: +998 97 957 54 55\n\n"
             "❓ Savollaringiz bo'lsa, bemalol qo'ng'iroq qilishingiz mumkin!"
         )
-        bot.send_message(chat_id, contact_text, parse_mode="Markdown")
+        bot.send_message(chat_id, contact_text)
 
     elif text == "🎥 Dars videolari":
         inline_markup = types.InlineKeyboardMarkup()
@@ -265,17 +264,16 @@ def handle_text(message):
         inline_markup.add(btn_link)
 
         video_text = (
-            "🎥 **Dars Videolari:**\n\n"
+            "🎥 Dars Videolari:\n\n"
             "Barcha o'quv video darsliklarimiz maxsus Telegram kanalimizga joylab boriladi.\n"
             "Kanalga kirish uchun quyidagi tugmani bosing 👇"
         )
-        bot.send_message(chat_id, video_text, parse_mode="Markdown", reply_markup=inline_markup)
+        bot.send_message(chat_id, video_text, reply_markup=inline_markup)
 
     elif text == "📝 Kursga qo'shilish":
         msg = bot.send_message(
             chat_id, 
-            "📋 **Kursga ro'yxatdan o'tish:**\n\nIltimos, **Ism va Familiyangizni** yozib yuboring:\n_(Masalan: Ozodbek Toirjonov)_",
-            parse_mode="Markdown",
+            "📋 Kursga ro'yxatdan o'tish:\n\nIltimos, Ism va Familiyangizni yozib yuboring:\n(Masalan: Ozodbek Toirjonov)",
             reply_markup=types.ReplyKeyboardRemove()
         )
         bot.register_next_step_handler(msg, get_full_name)
@@ -283,10 +281,10 @@ def handle_text(message):
     elif text == "💳 To'lov holati":
         is_paid = get_user_payment_status(chat_id)
         if is_paid == 1:
-            payment_text = "✅ **Siz to'lovni amalga oshirgansiz!**"
+            payment_text = "✅ Siz to'lovni amalga oshirgansiz!"
         else:
-            payment_text = "❌ **Siz hali to'lov qilmagansiz!**"
-        bot.send_message(chat_id, payment_text, parse_mode="Markdown")
+            payment_text = "❌ Siz hali to'lov qilmagansiz!"
+        bot.send_message(chat_id, payment_text)
 
     else:
         bot.send_message(chat_id, "Iltimos, quyidagi menyudan birini tanlang 👇", reply_markup=main_menu())
@@ -301,7 +299,7 @@ def callback_handler(call):
         target_chat_id = int(call.data.split("_")[1])
         if delete_user(target_chat_id):
             bot.answer_callback_query(call.id, "O'quvchi bazadan o'chirildi!")
-            bot.edit_message_text(f"❌ **Ushbu o'quvchi bazadan chiqarib yuborildi.**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            bot.edit_message_text(f"❌ Ushbu o'quvchi bazadan chiqarib yuborildi.", call.message.chat.id, call.message.message_id)
         else:
             bot.answer_callback_query(call.id, "Xatolik yuz berdi!")
 
@@ -309,12 +307,12 @@ def callback_handler(call):
         target_chat_id = int(call.data.split("_")[1])
         if mark_as_paid(target_chat_id):
             bot.answer_callback_query(call.id, "To'lov tasdiqlandi!")
-            bot.edit_message_text(f"✅ **Ushbu o'quvchi to'lovni amalga oshirdi deb belgilandi!**", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+            bot.edit_message_text(f"✅ Ushbu o'quvchi to'lovni amalga oshirdi deb belgilandi!", call.message.chat.id, call.message.message_id)
             
-            admin_msg = f"💳 **ADMIN XABARI:**\n\nID: `{target_chat_id}` bo'lgan o'quvchi **to'lovni amalga oshirdi!**"
+            admin_msg = f"💳 ADMIN XABARI:\n\nID: {target_chat_id} bo'lgan o'quvchi to'lovni amalga oshirdi!"
             for admin_id in ADMIN_IDS:
                 try:
-                    bot.send_message(admin_id, admin_msg, parse_mode="Markdown")
+                    bot.send_message(admin_id, admin_msg)
                 except Exception:
                     pass
 
@@ -328,8 +326,7 @@ def get_full_name(message):
 
     msg = bot.send_message(
         chat_id, 
-        f"Rahmat, **{message.text}**!\n\nEndi esa **telefon raqamingizni** yuboring (pastdagi tugmani bosing yoki yozib yuboring):", 
-        parse_mode="Markdown",
+        f"Rahmat, {message.text}!\n\nEndi esa telefon raqamingizni yuboring (pastdagi tugmani bosing yoki yozib yuboring):", 
         reply_markup=phone_markup
     )
     bot.register_next_step_handler(msg, get_phone_number)
@@ -348,25 +345,25 @@ def get_phone_number(message):
     save_user(chat_id, full_name, phone, username)
 
     success_text = (
-        "🎉 **Muvaffaqiyatli ro'yxatdan o'tdingiz!**\n\n"
-        f"👤 **Ism-Familiya:** {full_name}\n"
-        f"📞 **Telefon:** {phone}\n\n"
+        "🎉 Muvaffaqiyatli ro'yxatdan o'tdingiz!\n\n"
+        f"👤 Ism-Familiya: {full_name}\n"
+        f"📞 Telefon: {phone}\n\n"
         "Tashakkur! Tez orada siz bilan bog'lanamiz."
     )
-    bot.send_message(chat_id, success_text, parse_mode="Markdown", reply_markup=main_menu())
+    bot.send_message(chat_id, success_text, reply_markup=main_menu())
 
     username_str = f"@{username}" if username else "Mavjud emas"
     admin_notification = (
-        "📥 **YANGI O'QUVCHI RO'YXATDAN O'TDI!**\n\n"
-        f"👤 **Ism-Familiya:** {full_name}\n"
-        f"📞 **Telefon:** {phone}\n"
-        f"💬 **Telegram profil:** {username_str}\n"
-        f"🆔 **ID:** `{chat_id}`"
+        "📥 YANGI O'QUVCHI RO'YXATDAN O'TDI!\n\n"
+        f"👤 Ism-Familiya: {full_name}\n"
+        f"📞 Telefon: {phone}\n"
+        f"💬 Telegram profil: {username_str}\n"
+        f"🆔 ID: {chat_id}"
     )
     
     for admin_id in ADMIN_IDS:
         try:
-            bot.send_message(admin_id, admin_notification, parse_mode="Markdown")
+            bot.send_message(admin_id, admin_notification)
         except Exception as e:
             print(f"Adminga xabar yuborishda xatolik: {e}")
 
@@ -376,7 +373,7 @@ def send_broadcast(message):
     count = 0
     for cid in chat_ids:
         try:
-            bot.send_message(cid, f"📢 **ADMIN XABARI:**\n\n{broadcast_text}", parse_mode="Markdown")
+            bot.send_message(cid, f"📢 ADMIN XABARI:\n\n{broadcast_text}")
             count += 1
         except Exception:
             pass
